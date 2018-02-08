@@ -1,16 +1,8 @@
 import numpy as np
 import re
-#import glob
-#import read_dao
-#from astropy.io import fits
 import matplotlib.pyplot as mp
 from astropy.stats import LombScargle
-#import plotting_utilities
 from scipy import stats
-#from scipy.interpolate import interp1d
-#from scipy import signal
-#from matplotlib import gridspec
-#import os.path
 import peakutils
 from astropy.stats import sigma_clip
 from IPython import display
