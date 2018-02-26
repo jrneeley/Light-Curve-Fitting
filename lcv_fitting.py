@@ -20,7 +20,19 @@ def read_lcv(lcv_file):
 
 
 
-def phase_lcv(filters, lcv_data, lcv_name, period, T0, save=1, plot=0, error_threshold=0.3):
+def phase_lcv(filters, lcv_data, lcv_name, period, T0=None, save=1, plot=0, error_threshold=0.3):
+
+    if T0 == None:
+        # find filter with the most data
+        most_obs = 0
+        for filt in filters:
+            num_obs = len(lcv_data['mag'][lcv_data['filter'] == filt])
+            if num_obs > most_obs:
+                best_filter = filt
+        # find epoch of minimum
+        temp_mjds = lcv_data['mjd'][lcv_data['filter'] == best_filter]
+        temp_mags = lcv_data['mag'][lcv_data['filter'] == best_filter]
+        T0 = mjds[mags == np.max(mags)][0]
 
     if plot == 1:
         fig = mp.figure(figsize=(10,8))
