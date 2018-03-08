@@ -20,7 +20,7 @@ def read_lcv(lcv_file):
 
 
 
-def phase_lcv(filters, lcv_data, lcv_name, period, T0=None, save=1, plot=0, error_threshold=0.3):
+def phase_lcv(filters, lcv_data, lcv_name, period, T0=None, save=1, plot=1, error_threshold=0.1):
 
     if T0 == None:
         # find filter with the most data
@@ -32,7 +32,11 @@ def phase_lcv(filters, lcv_data, lcv_name, period, T0=None, save=1, plot=0, erro
         # find epoch of minimum
         temp_mjds = lcv_data['mjd'][lcv_data['filter'] == best_filter]
         temp_mags = lcv_data['mag'][lcv_data['filter'] == best_filter]
-        T0 = mjds[mags == np.max(mags)][0]
+        temp_errs = lcv_data['err'][lcv_data['filter'] == best_filter]
+        select = temp_errs < error_threshold
+        temp_mjds = temp_mjds[select]
+        temp_mags = temp_mags[select]
+        T0 = temp_mjds[temp_mags == np.max(temp_mags)][0]
 
     if plot == 1:
         fig = mp.figure(figsize=(10,8))
@@ -78,11 +82,11 @@ def phase_lcv(filters, lcv_data, lcv_name, period, T0=None, save=1, plot=0, erro
             mp.errorbar(phase, mag, yerr=err, fmt='o', label=filt)
     if plot == 1:
         mp.legend()
-        mp.show()
+        mp.savefig(lcv_name+'-ph.pdf', format='pdf')
 
 
 def refine_period(first_band, best_period, second_band=None,
-    plot_save=0, error_threshold=0.1, search_window=0.0002, plot=0):
+    error_threshold=0.1, search_window=0.0002, plot=0):
 
     x = np.array(first_band['mjd'][first_band['err'] < error_threshold], dtype=float)
     y = np.array(first_band['mag'][first_band['err'] < error_threshold], dtype=float)
@@ -133,8 +137,8 @@ def refine_period(first_band, best_period, second_band=None,
     return new_period
 
 # Use to do one round of LombScargle and identify possible periods for RRL star
-def period_search(data, name, min_period = 0.2, max_period=1.0,
-                    error_threshold=0.05, verbose=0):
+def period_search(data, min_period = 0.2, max_period=1.0,
+                    error_threshold=0.05, verbose=0, plot=1):
 
     x1 = np.array(data['mjd'][data['err'] < error_threshold], dtype=float)
     y1 = np.array(data['mag'][data['err'] < error_threshold], dtype=float)
@@ -154,17 +158,9 @@ def period_search(data, name, min_period = 0.2, max_period=1.0,
     best_frequency = frequency[np.argmax(power)]
     best_period = 1/best_frequency
 
-    fig = mp.figure(figsize=(12, 6))
-    ax1 = mp.subplot2grid((1,2), (0,0))
-    ax2 = mp.subplot2grid((1,2), (0,1))
-    ax1.plot(1/frequency, power)
-    ax1.plot(1/frequency[indices], power[indices], 'rx')
     alias_freq = np.array([best_frequency+1, best_frequency-1, best_frequency+2, best_frequency-2])
     alias_power = np.repeat(np.max(power), 4)
-    ax1.plot(1/alias_freq, alias_power, 'kx')
-    ax1.set_xlim(min_period, max_period)
-    ax1.set_xlabel('Period (days)')
-    ax1.set_ylabel('Power')
+
 
 
     # Calculate SNR of peaks
@@ -177,13 +173,26 @@ def period_search(data, name, min_period = 0.2, max_period=1.0,
     y_fit = LombScargle(x1, y1, er1).model(t_fit, best_frequency)
 
     phase_data = np.mod(x1*best_frequency, 1)
-    ax2.plot(phase_data, y1, 'o')
-    ax2.set_ylim(np.max(y1)+0.05, np.min(y1)-0.05)
-    ax2.set_xlabel('Phase')
-    ax2.set_ylabel('mag')
-    mp.show()
-    mp.close()
-#    return candidate_periods
+
+    if plot == 1:
+        fig = mp.figure(figsize=(12, 6))
+        ax1 = mp.subplot2grid((1,2), (0,0))
+        ax2 = mp.subplot2grid((1,2), (0,1))
+        ax1.plot(1/frequency, power)
+        ax1.plot(1/best_frequency, np.max(power), 'rx')
+        #ax1.plot(1/frequency[indices], power[indices], 'rx')
+        #ax1.plot(1/alias_freq, alias_power, 'kx')
+        ax1.set_xlim(min_period, max_period)
+        ax1.set_xlabel('Period (days)')
+        ax1.set_ylabel('Power')
+
+        ax2.plot(phase_data, y1, 'o')
+        ax2.set_ylim(np.max(y1)+0.05, np.min(y1)-0.05)
+        ax2.set_xlabel('Phase')
+        ax2.set_ylabel('mag')
+        mp.show()
+        mp.close()
+
     return best_period, snr_best
 
 
