@@ -7,7 +7,7 @@ import peakutils
 from astropy.stats import sigma_clip
 from IPython import display
 
-
+# reads in light curve data from a file
 def read_lcv(lcv_file):
 
     dtype = np.dtype([('filter', 'S2'), ('mjd', float), ('mag', float),
@@ -18,75 +18,63 @@ def read_lcv(lcv_file):
 
     return filters, data
 
+# phases a light curve with a given period - produces plot and text file if prompted
+def phase_lcv(lcv_data, lcv_name, period, T0=0, plot=1, save=0, \
+        error_threshold=0.05, save_dir=''):
 
+    phase_all = np.mod((lcv_data['mjd']-T0)/period, 1)
+    select_err = lcv_data['err'] < error_threshold
 
-def phase_lcv(filters, lcv_data, lcv_name, period, T0=None, save=1, plot=1, error_threshold=0.1):
+    phase = phase_all[select_err]
+    mag = lcv_data['mag'][select_err]
+    mjd = lcv_data['mjd'][select_err]
+    err = lcv_data['err'][select_err]
+    band = lcv_data['filter'][select_err]
 
-    if T0 == None:
-        # find filter with the most data
-        most_obs = 0
-        for filt in filters:
-            num_obs = len(lcv_data['mag'][lcv_data['filter'] == filt])
-            if num_obs > most_obs:
-                best_filter = filt
-        # find epoch of minimum
-        temp_mjds = lcv_data['mjd'][lcv_data['filter'] == best_filter]
-        temp_mags = lcv_data['mag'][lcv_data['filter'] == best_filter]
-        temp_errs = lcv_data['err'][lcv_data['filter'] == best_filter]
-        select = temp_errs < error_threshold
-        temp_mjds = temp_mjds[select]
-        temp_mags = temp_mags[select]
-        T0 = temp_mjds[temp_mags == np.max(temp_mags)][0]
+    if save == 1:
+        phased_file = save_dir+lcv_name+'.ph'
+
+        data_save = np.array(zip(lcv_data['filter'], lcv_data['mjd'], phase_all, lcv_data['mag'], lcv_data['err']), dtype=ph_dtype)
+        np.savetxt(phased_file, data_save, fmt='%2s %10.4f %8.6f %6.3f %5.3f')
 
     if plot == 1:
-        fig = mp.figure(figsize=(10,8))
-        mp.ylabel('mag')
-        mp.xlabel('phase')
-        mp.ylim((np.max(lcv_data['mag'])+0.5, np.min(lcv_data['mag'])-0.5))
-        mp.xlim(-0.2,1.2)
+        figtosave = mp.figure(figsize=(8,10))
+        ax = figtosave.add_subplot(111)
 
-    for filt in filters:
+        master_filters = np.array(['U', 'B', 'V', 'R', 'I', 'J', 'H', 'K',
+            'I1', 'I2'], dtype='S2')
+        master_markers = np.array(['P', 'v', 'D', '>', 'x', 'p', 'd', '^', 'o', 's'])
+        master_offset = np.array([1.0, 0.5, 0.0, -0.25, -0.5, -0.7, -0.9, -1.1, -1.0, -1.5 ])
+        master_colors = np.array(['xkcd:violet', 'xkcd:periwinkle', 'xkcd:sapphire',
+            'xkcd:sky blue', 'xkcd:emerald', 'xkcd:avocado', 'xkcd:goldenrod',
+            'xkcd:orange', 'xkcd:pink', 'xkcd:scarlet'])
+        for filt in master_filters:
+            offset = master_offset[master_filters == filt]
+            marker = master_markers[master_filters == filt][0]
+            color = master_colors[master_filters == filt][0]
+            f_select = band == filt
+            x = phase[f_select]
+            y = mag[f_select]
+            e = err[f_select]
+            ax.errorbar(x, y+offset, yerr=e, fmt=marker, color=color, zorder=1, label=filt)
+        max_mag = np.nanmean(lcv_data['mag'][lcv_data['filter'] == 'V'])+3
+        min_mag = np.nanmean(lcv_data['mag'][lcv_data['filter'] == 'V'])-5
+        ax.set_ylim((max_mag, min_mag))
+        ax.set_xlim((-0.2, 1.2))
+        ax.set_xlabel('Phase')
+        ax.set_ylabel('Mag + offset')
+        #add lcv name and period to plot
+        ax.text(1.0, min_mag+0.25, lcv_name)
+        ax.text(1.0, min_mag+0.5, 'P = '+str(period))
+        #handles, labels = ax.get_legend_handles_labels()
+        #ax.legend(handles, labels, loc=1)
+        plot_file = save_dir+lcv_name+'-ph.pdf' #re.sub('\.ph', '-fit.pdf', phased_lcv_file)
+        mp.savefig(plot_file)
 
-        mag_all = lcv_data['mag'][lcv_data['filter'] == filt]
-        err_all = lcv_data['err'][lcv_data['filter'] == filt]
-        mjd_all = lcv_data['mjd'][lcv_data['filter'] == filt]
-
-        # remove NaNs
-        err_all = err_all[~np.isnan(mag_all)]
-        mjd_all = mjd_all[~np.isnan(mag_all)]
-        mag_all = mag_all[~np.isnan(mag_all)]
-
-        # Filter on the uncertainty
-        mag = mag_all[err_all < error_threshold]
-        mjd = mjd_all[err_all < error_threshold]
-        err = err_all[err_all < error_threshold]
-        band = np.repeat(filt, len(mag))
-
-        phase = np.mod((mjd - T0)/period, 1)
-        if save == 1:
-            phased_file = lcv_name+'.ph'
-            if filt == filters[0]:
-                f_handle = open(phased_file, 'w')
-            else:
-                f_handle = open(phased_file, 'a')
-            data_save = np.array(zip(band, mjd, phase, mag, err), dtype=[('c1', 'S2'),
-                ('c2', float), ('c3', float), ('c4', float), ('c5', float)])
-            np.savetxt(f_handle, data_save, fmt='%s %10.4f %8.6f %6.3f %5.3f')
-            f_handle.close()
-
-
-        if plot == 1:
-            phase = phase[~np.isnan(mag)]
-            err = err[~np.isnan(mag)]
-            mag = mag[~np.isnan(mag)]
-            mp.errorbar(phase, mag, yerr=err, fmt='o', label=filt)
-    if plot == 1:
-        mp.legend()
-        mp.savefig(lcv_name+'-ph.pdf', format='pdf')
-
-
+# Refines the period estimated by Lomb-Scargle by minimizing the dispersion in the
+# phased light curve in one or two bands.
 def refine_period(first_band, best_period, second_band=None,
-    error_threshold=0.1, search_window=0.0002, plot=0):
+    error_threshold=0.05, search_window=0.0002, plot=0):
 
     x = np.array(first_band['mjd'][first_band['err'] < error_threshold], dtype=float)
     y = np.array(first_band['mag'][first_band['err'] < error_threshold], dtype=float)
@@ -127,14 +115,14 @@ def refine_period(first_band, best_period, second_band=None,
     order = np.argsort(avg_std)
     new_period = periods[order[0]]
     best_std = avg_std[order[0]]
-    mp.plot(periods, avg_std, 'ro')
-    mp.axvline(new_period)
 
     if plot == 1:
+        mp.plot(periods, avg_std, 'ro')
+        mp.axvline(new_period)
         mp.show()
-    mp.close()
 
     return new_period
+
 
 # Use to do one round of LombScargle and identify possible periods for RRL star
 def period_search(data, min_period = 0.2, max_period=1.0,
@@ -144,8 +132,8 @@ def period_search(data, min_period = 0.2, max_period=1.0,
     y1 = np.array(data['mag'][data['err'] < error_threshold], dtype=float)
     er1 = np.array(data['err'][data['err'] < error_threshold], dtype=float)
 
-    freq_max = 1/(min_period)
-    freq_min = 1/(max_period)
+    freq_max = 1./(min_period)
+    freq_min = 1./(max_period)
     frequency, power = LombScargle(x1, y1, er1).autopower(minimum_frequency=freq_min,
                         maximum_frequency=freq_max )
 
@@ -195,45 +183,50 @@ def period_search(data, min_period = 0.2, max_period=1.0,
 
     return best_period, snr_best
 
+# Derives a smoothed light curve using the GLOESS method. This version also
+# calculates the appropriate T0, and saves both the phased data and a
+# the smoothed light curve into text files
+def gloess_auto(lcv_data, period, lcv_name, clean=1, save_dir='', master_plot=1):
 
-def gloess(phased_lcv_file, clean=1, smoothing_params=None, ask=0, filters='all', master_plot=0):
-
+    master_filters = np.array(['U', 'B', 'V', 'R', 'I', 'J', 'H', 'K', 'I1', 'I2'], dtype='S2')
     # set to 1 if you want to save a single figure for each star with all data
     if master_plot == 1:
         figtosave = mp.figure(figsize=(8,10))
         ax = figtosave.add_subplot(111)
+        master_markers = np.array(['P', 'v', 'D', '>', 'x', 'p', 'd', '^', 'o', 's'])
+        master_offset = np.array([1.0, 0.5, 0.0, -0.25, -0.5, -0.7, -0.9, -1.1, -1.0, -1.5 ])
+        master_colors = np.array(['xkcd:violet', 'xkcd:periwinkle', 'xkcd:sapphire',
+            'xkcd:sky blue', 'xkcd:emerald', 'xkcd:avocado', 'xkcd:goldenrod',
+            'xkcd:orange', 'xkcd:pink', 'xkcd:scarlet'])
 
-    master_filters = np.array(['U', 'B', 'V', 'R', 'I', 'J', 'H', 'K',
-        'I1', 'I2'], dtype='S2')
-    master_markers = np.array(['P', 'v', 'D', '>', 'x', 'p', 'd', '^', 'o', 's'])
-    master_offset = np.array([1.0, 0.5, 0.0, -0.25, -0.5, -0.7, -0.9, -1.1, -1.0, -1.5 ])
-    master_colors = np.array(['xkcd:violet', 'xkcd:periwinkle', 'xkcd:sapphire',
-        'xkcd:sky blue', 'xkcd:emerald', 'xkcd:avocado', 'xkcd:goldenrod',
-        'xkcd:orange', 'xkcd:pink', 'xkcd:scarlet'])
-    # read in the phased light curve file
-    dtype1 = np.dtype([('filter', 'S2'), ('mjd', float), ('phase', float), ('mag', float), ('err', float)])
-    data = np.loadtxt(phased_lcv_file, dtype=dtype1, usecols=(0,1,2,3,4))
+    initial_phase = np.mod(lcv_data['mjd']/period, 1)
 
-    # which filters are available
-    if filters == 'all': filters = np.unique(data['filter'])
+    # Of the available filters, the "best" filter is the one with the most epochs
+    filters, counts = np.unique(lcv_data['filter'], return_counts=True)
     num_filters = len(filters)
+    best_filter = filters[counts.argmax()]
 
+    #print 'Using {} to determine epoch of min'.format(best_filter)
 
-    if smoothing_params is None: smoothing_params = np.repeat(1.0, 10)
-        #smoothing_params = np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.2, 0.2, 0.2, 0.2, 0.2])
+    dtype = np.dtype([('avg', float), ('avg_e', float), ('amp', float), ('chisq', float), ('sigma', float)])
+    lcv_params = np.zeros(len(master_filters), dtype=dtype)
 
-    master_avg_mag = np.zeros(10)
-    master_amp = np.zeros(10)
-    master_sigma = np.zeros(10)
-    master_avg_mag_er = np.zeros(10)
+    band_all = []
+    x_all = []
+    y_all = []
+    T0 = 0
+    for iii, filt in enumerate(master_filters):
 
-    for filt in filters:
+        available = np.in1d(filt, filters)
+        if available == False: continue
 
-        phase = data['phase'][data['filter'] == filt]
-        mag = data['mag'][data['filter'] == filt]
-        err = data['err'][data['filter'] == filt]
-        mjd = data['mjd'][data['filter'] == filt]
+        current_filter = lcv_data['filter'] == filt
+        phase = initial_phase[current_filter]
+        mag = lcv_data['mag'][current_filter]
+        err = lcv_data['err'][current_filter]
+        mjd = lcv_data['mjd'][current_filter]
 
+        # Check for nan values and remove them
         mjd = mjd[~np.isnan(mag)]
         phase = phase[~np.isnan(mag)]
         err = err[~np.isnan(mag)]
@@ -245,6 +238,7 @@ def gloess(phased_lcv_file, clean=1, smoothing_params=None, ask=0, filters='all'
             mag = mag[~filtered_err.mask]
             phase = phase[~filtered_err.mask]
             err = err[~filtered_err.mask]
+            mjd = mjd[~filtered_err.mask]
 
         # skip this band if we don't have enough observations or phase coverage
         n_obs = len(mag)
@@ -252,11 +246,9 @@ def gloess(phased_lcv_file, clean=1, smoothing_params=None, ask=0, filters='all'
         delta_phase = np.max(phase) - np.min(phase)
         if (n_obs < 30) or (delta_phase < 0.7):
             continue
-        sigma = float(smoothing_params[master_filters == filt])
 
-        if sigma == 1.0:
-            hist, bins = np.histogram(phase, bins='auto')
-            sigma = 1./len(bins)
+        hist, bins = np.histogram(phase, bins='auto')
+        sigma = 1./len(bins)
 
         phase_copy = np.concatenate((phase-2, phase-1, phase, phase+1, phase+2))
         mag_copy = np.tile(mag, 5)
@@ -267,98 +259,125 @@ def gloess(phased_lcv_file, clean=1, smoothing_params=None, ask=0, filters='all'
         n_data = len(mag_copy)
         n_fit = len(x)
 
-        happy = 'n'
-        while happy == 'n':
+        smoothed_mag = np.zeros(n_fit)
+        weight = np.zeros(n_data)
 
-            smoothed_mag = np.zeros(n_fit)
-            weight = np.zeros(n_data)
+        # interpolate
+        for ind, step in enumerate(x):
 
-            # interpolate
-            for ind, step in enumerate(x):
+            dist = phase_copy - step
+            closest_phase = np.min(np.abs(dist))
+            if closest_phase > sigma: sigma = closest_phase*5
+            weight = err_copy * np.exp(dist**2/sigma**2)
+            fit = np.polyfit(phase_copy, mag_copy, 2, w=1/weight)
+            smoothed_mag[ind] = fit[2] + fit[1]*step + fit[0]*step**2
 
-                dist = phase_copy - step
-                closest_phase = np.min(np.abs(dist))
-                if closest_phase > sigma: sigma = closest_phase*5
-                weight = err_copy * np.exp(dist**2/sigma**2)
-                fit = np.polyfit(phase_copy, mag_copy, 2, w=1/weight)
-                smoothed_mag[ind] = fit[2] + fit[1]*step + fit[0]*step**2
-            #    print step, np.min(np.abs(dist))
+        smoothed_mag_copy = np.tile(smoothed_mag, 5)
+        x_copy = np.concatenate((x-2, x-1, x, x+1, x+2))
 
-            smoothed_mag_copy = np.tile(smoothed_mag, 5)
-            x_copy = np.concatenate((x-2, x-1, x, x+1, x+2))
-
-            figshow = mp.figure(figsize=(8,6))
-            ax2 = figshow.add_subplot(111)
-            ax2.errorbar(phase_copy, mag_copy, yerr=err_copy, fmt='o', zorder=1)
-            ax2.plot(x_copy, smoothed_mag_copy, 'r-')
-            ax2.set_ylim((np.max(mag)+0.2, np.min(mag)-0.2))
-            ax2.set_xlim((-0.2, 1.2))
-            ax2.set_xlabel('Phase')
-            ax2.set_ylabel(filt+' mag')
-            display.display(mp.gcf())
-            display.clear_output(wait=True)
-
-        #    if smoothing_params[master_filters == filt] != 1.0:
-            if ask == 0:
-                happy = 'y'
-                plot_file = re.sub('.ph', '-'+filt+'fit.pdf', phased_lcv_file)
-                mp.savefig(plot_file, format='pdf')
-                continue
-            check = raw_input('Are you happy with this fit? [y/n]: ')
-            if check == 'n':
-                sigma = input('Enter new smoothing parameter: ')
-            if check == 'y':
-                happy = 'y'
-
-        mp.close()
         # Derive light curve parameters
         flux = 99*np.power(10,-smoothed_mag/2.5)
         average_flux = np.mean(flux)
         average_mag = -2.5*np.log10(average_flux/99)
 
         amplitude = np.max(smoothed_mag) - np.min(smoothed_mag)
-        ph_max = x[smoothed_mag == np.min(smoothed_mag)]
-        ph_min = x[smoothed_mag == np.max(smoothed_mag)]
+        residual = np.zeros(len(phase))
+        for ii, ph in enumerate(phase):
+            dist = np.abs(x - ph)
+            yy = smoothed_mag[dist == np.min(dist)]
+            residual[ii] = mag[ii] - yy[0]
+        chisq = np.sum(residual**2/err**2)
+
+        # determine epoch of minimum using band with most data
+        if filt == best_filter:
+            ph_max = x[smoothed_mag.argmin()]
+            ph_min = x[smoothed_mag.argmax()]
+            T0 = mjd[np.abs(phase - ph_min).argmin()]
 
         err_fit = amplitude/np.sqrt(12*len(err))
         average_mag_err = np.sqrt(np.sum(err**2)/len(err)**2 + err_fit**2)
 
-        # determine the epoch of maximum using the V band data
-        if filt == 'V':
-            T0 = ph_max
 
-        master_avg_mag[master_filters == filt] = average_mag
-        master_amp[master_filters == filt] = amplitude
-        master_sigma[master_filters == filt] = sigma
-        master_avg_mag_er[master_filters == filt] = average_mag_err
+        lcv_params['avg'][iii] = average_mag
+        lcv_params['avg_e'][iii] = average_mag_err
+        lcv_params['amp'][iii] = amplitude
+        lcv_params['chisq'][iii] = chisq
+        lcv_params['sigma'][iii] = sigma
 
-        fit_file = re.sub('.ph', '.fit', phased_lcv_file)
-        if filt == filters[0]:
-            f = open(fit_file, 'w')
-        else:
-            f = open(fit_file, 'a')
-        dtype= np.dtype([('filt', 'S2'), ('x', float), ('mag', float)])
-        data_save = np.array(zip(np.repeat(filt, len(x)), x, smoothed_mag), dtype=dtype)
-        np.savetxt(f, data_save, fmt='%2s %.4f %2.3f')
-        f.close()
+        band = np.repeat(filt, len(x))
+        band_all = np.append(band_all, band)
+        x_all = np.append(x_all, x)
+        y_all = np.append(y_all, smoothed_mag)
+
+    # rephase with T0
+    x_new = x_all - ph_min
+    x_new[x_new < 0] += 1.0
+    phase_final = np.mod((lcv_data['mjd'] - T0)/period, 1)
+
+    # sort gloess fit again
+    for iii, filt in enumerate(master_filters):
+        # check to see if gloess was performed for this filter
+        #available = np.in1d(filt, filters)
+        # if availabe == False: continue
+        if lcv_params['avg'][iii] == 0: continue
+
+        current_filter = band_all == filt
+        xx = np.copy(x_new[current_filter])
+        yy = np.copy(y_all[current_filter])
+        order = np.argsort(xx)
+        x_new[current_filter] = xx[order]
+        y_all[current_filter] = yy[order]
 
         if master_plot == 1:
-
+            xcopy = np.concatenate((x_new[current_filter]-1, x_new[current_filter], x_new[current_filter]+1))
+            ycopy = np.tile(y_all[current_filter], 3)
+            ph = phase_final[lcv_data['filter'] == filt]
+            mag = lcv_data['mag'][lcv_data['filter'] == filt]
+            err = lcv_data['err'][lcv_data['filter'] == filt]
+            if clean == 1:
+                # remove data with large error bars
+                filtered_err = sigma_clip(err, sigma=3, iters=2)
+                mag = mag[~filtered_err.mask]
+                ph = ph[~filtered_err.mask]
+                err = err[~filtered_err.mask]
             offset = master_offset[master_filters == filt]
             marker = master_markers[master_filters == filt][0]
             color = master_colors[master_filters == filt][0]
-            ax.errorbar(phase, mag+offset, yerr=err, fmt=marker, color=color, zorder=1)
-            ax.plot(x_copy, smoothed_mag_copy+offset, 'k-')
+            ax.errorbar(ph, mag+offset, yerr=err, fmt=marker, color=color, zorder=1, label=filt)
+            ax.plot(xcopy, ycopy+offset, 'k-')
+
+    fit_dtype = np.dtype([('filter', 'a2'), ('ph', float), ('mag', float)])
+    ph_dtype = np.dtype([('filter', 'a2'), ('mjd', float), ('phase', float), ('mag', float), ('err', float)])
+    fit_file = open(save_dir+lcv_name+'.fit', 'w')
+    ph_file = open(save_dir+lcv_name+'.ph', 'w')
+
+    data_save = np.array(zip(band_all, x_new, y_all), dtype=fit_dtype)
+    np.savetxt(fit_file, data_save, fmt='%2s %6.4f %6.3f')
+
+    data_save = np.array(zip(lcv_data['filter'], lcv_data['mjd'], phase_final, lcv_data['mag'], lcv_data['err']), dtype=ph_dtype)
+    np.savetxt(ph_file, data_save, fmt='%2s %10.4f %8.6f %6.3f %5.3f')
+
+    fit_file.close()
+    ph_file.close()
+
 
     if master_plot == 1:
 
-        max_mag = np.nanmean(data['mag'][data['filter'] == 'V'])+3
-        min_mag = np.nanmean(data['mag'][data['filter'] == 'V'])-5
+        max_mag = np.nanmean(lcv_data['mag'][lcv_data['filter'] == 'V'])+3
+        min_mag = np.nanmean(lcv_data['mag'][lcv_data['filter'] == 'V'])-5
         ax.set_ylim((max_mag, min_mag))
         ax.set_xlim((-0.2, 2.0))
         ax.set_xlabel('Phase')
         ax.set_ylabel('Mag + offset')
-        plot_file = re.sub('\.ph', '-fit.pdf', phased_lcv_file)
-        mp.savefig(plot_file)
+        #add lcv name and period to plot
+        ax.text(1.0, min_mag+0.25, lcv_name)
+        ax.text(1.0, min_mag+0.5, 'P = '+str(period))
+        handles, labels = ax.get_legend_handles_labels()
+        # sort both labels and handles by labels
+        #labels, handles = zip(*sorted(zip(labels, handles), key=lambda t: t[0]))
+        ax.legend(handles, labels, loc=1)
+        plot_file = save_dir+lcv_name+'-fit.pdf'
+        mp.savefig(plot_file, format='pdf')
 
-    return master_filters, master_avg_mag, master_avg_mag_er, master_amp, master_sigma
+
+    return lcv_params, T0
