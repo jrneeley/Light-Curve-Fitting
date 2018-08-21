@@ -5,7 +5,6 @@ from astropy.stats import LombScargle
 from scipy import stats
 import peakutils
 from astropy.stats import sigma_clip
-from IPython import display
 from matplotlib.widgets import Slider
 
 # reads in light curve data from a file
@@ -405,14 +404,16 @@ def raw_lcv(lcv_data, period, t0, lcv_name, band='V'):
 
     ph_min = np.mod((t_min - t0)/period, 1)
     ph_max = np.mod((t_max - t0)/period, 1)
-    print ph_min, ph_max
+    #print ph_min, ph_max
 
     fit_min = t_min - ph_min*period
-    fit_max = t_max + (1-ph_max)*period
+    fit_max = t_max + (1.-ph_max)*period
 
-    fit_test = np.arange(fit_min, fit_max, 0.001*period)
-    N_cycles = len(fit_test)/1000
-    y_fit_new = np.tile(y_fit, N_cycles)
+    N_to_min = (t0 - fit_min)/period
+    N_to_max = (fit_max - t0)/period
+    N_cycles = int(N_to_min + N_to_max)
+    x_fit_long = np.linspace(fit_min, fit_max, num=N_cycles*1000)
+    y_fit_long = np.tile(y_fit, N_cycles)
 
     fig, ax = mp.subplots(2,1)
     mp.subplots_adjust(bottom=0.25)
@@ -421,7 +422,7 @@ def raw_lcv(lcv_data, period, t0, lcv_name, band='V'):
     y = lcv_data['mag'][filt_select]
     ax[0].plot(t,y,'o')
     ax[1].plot(t,y, 'o')
-    ax[1].plot(fit_test, y_fit_new)
+    ax[1].plot(x_fit_long, y_fit_long)
     v = [np.max(y), np.min(y)]
 
     ax[1].axis([t_min-1, t_min+5., np.max(y)+0.2, np.min(y)-0.2])
@@ -441,4 +442,17 @@ def raw_lcv(lcv_data, period, t0, lcv_name, band='V'):
 
     spos.on_changed(update)
 
+    mp.show()
+
+
+    # compute O-C diagram
+    indices = np.searchsorted(x_fit_long, t)
+    t_predicted = x_fit_long[indices]
+    y_predicted = y_fit_long[indices]
+
+    OC = y - y_predicted
+    fig = mp.figure()
+    mp.plot(t, OC, 'o')
+    mp.xlabel('MJD')
+    mp.ylabel('O-C')
     mp.show()
