@@ -6,7 +6,7 @@ from scipy import stats
 import peakutils
 from astropy.stats import sigma_clip
 from matplotlib.widgets import Slider
-
+from matplotlib import cm
 # reads in light curve data from a file
 def read_lcv(lcv_file):
 
@@ -186,7 +186,7 @@ def period_search(data, min_period = 0.2, max_period=1.0,
 # Derives a smoothed light curve using the GLOESS method. This version also
 # calculates the appropriate T0, and saves both the phased data and a
 # the smoothed light curve into text files
-def gloess_auto(lcv_data, period, lcv_name, clean=1, save_dir='', master_plot=1):
+def gloess_auto(lcv_data, period, lcv_name, clean=1, save_dir='', master_plot=1, error_threshold=0.05):
 
     master_filters = np.array(['U', 'B', 'V', 'R', 'I', 'J', 'H', 'K', 'I1', 'I2'], dtype='S2')
     # set to 1 if you want to save a single figure for each star with all data
@@ -194,7 +194,8 @@ def gloess_auto(lcv_data, period, lcv_name, clean=1, save_dir='', master_plot=1)
         figtosave = mp.figure(figsize=(8,10))
         ax = figtosave.add_subplot(111)
         master_markers = np.array(['P', 'v', 'D', '>', 'x', 'p', 'd', '^', 'o', 's'])
-        master_offset = np.array([1.0, 0.5, 0.0, -0.25, -0.5, -0.7, -0.9, -1.1, -1.0, -1.5 ])
+        #master_offset = np.array([1.0, 0.5, 0.0, -0.25, -0.5, -0.7, -0.9, -1.1, -1.0, -1.5 ])
+        master_offset = np.array([1.0, 0.5, 0.0, -0.25, -0.5, -0.7, -0.9, -1.1, -1.5, -2.0 ])
         master_colors = np.array(['xkcd:violet', 'xkcd:periwinkle', 'xkcd:sapphire',
             'xkcd:sky blue', 'xkcd:emerald', 'xkcd:avocado', 'xkcd:goldenrod',
             'xkcd:orange', 'xkcd:pink', 'xkcd:scarlet'])
@@ -232,6 +233,15 @@ def gloess_auto(lcv_data, period, lcv_name, clean=1, save_dir='', master_plot=1)
         err = err[~np.isnan(mag)]
         mag = mag[~np.isnan(mag)]
 
+        # Remove stars based on error threshold
+        # raise error threshold for MIR bands
+        if (filt == 'I1') or (filt == 'I2'): threshold = 3*error_threshold
+        else: threshold = error_threshold
+        mjd = mjd[err < threshold]
+        phase = phase[err < threshold]
+        mag = mag[err < threshold]
+        err = err[err < threshold]
+
         if clean == 1:
             # remove data with large error bars
             filtered_err = sigma_clip(err, sigma=3, iters=2)
@@ -242,6 +252,7 @@ def gloess_auto(lcv_data, period, lcv_name, clean=1, save_dir='', master_plot=1)
 
         # skip this band if we don't have enough observations or phase coverage
         n_obs = len(mag)
+
         if (filt == 'I1') or (filt == 'I2'): n_obs = 99
         delta_phase = np.max(phase) - np.min(phase)
         if (n_obs < 30) or (delta_phase < 0.7):
@@ -249,6 +260,7 @@ def gloess_auto(lcv_data, period, lcv_name, clean=1, save_dir='', master_plot=1)
 
         hist, bins = np.histogram(phase, bins='auto')
         sigma = 1./len(bins)
+        if (filt != 'I1') and (filt != 'I2'): sigma *= 0.5
 
         phase_copy = np.concatenate((phase-2, phase-1, phase, phase+1, phase+2))
         mag_copy = np.tile(mag, 5)
@@ -262,14 +274,16 @@ def gloess_auto(lcv_data, period, lcv_name, clean=1, save_dir='', master_plot=1)
         smoothed_mag = np.zeros(n_fit)
         weight = np.zeros(n_data)
 
+        #np.seterr(over='ignore')
         # interpolate
         for ind, step in enumerate(x):
 
             dist = phase_copy - step
             closest_phase = np.min(np.abs(dist))
-            if closest_phase > sigma: sigma = closest_phase*5
-            weight = err_copy * np.exp(dist**2/sigma**2)
-            fit = np.polyfit(phase_copy, mag_copy, 2, w=1/weight)
+            if closest_phase > sigma: sigma = closest_phase*2 # used to be closest_phase*5
+
+            weight = 1./(err_copy * np.exp(dist**2/sigma**2))
+            fit = np.polyfit(phase_copy, mag_copy, 2, w=weight)
             smoothed_mag[ind] = fit[2] + fit[1]*step + fit[0]*step**2
 
         smoothed_mag_copy = np.tile(smoothed_mag, 5)
@@ -334,6 +348,11 @@ def gloess_auto(lcv_data, period, lcv_name, clean=1, save_dir='', master_plot=1)
             ph = phase_final[lcv_data['filter'] == filt]
             mag = lcv_data['mag'][lcv_data['filter'] == filt]
             err = lcv_data['err'][lcv_data['filter'] == filt]
+            if (filt == 'I1') or (filt == 'I2'): threshold = 3*error_threshold
+            else: threshold = error_threshold
+            ph = ph[err < threshold]
+            mag = mag[err < threshold]
+            err = err[err < threshold]
             if clean == 1:
                 # remove data with large error bars
                 filtered_err = sigma_clip(err, sigma=3, iters=2)
@@ -397,13 +416,14 @@ def raw_lcv(lcv_data, period, t0, lcv_name, band='V'):
     t_min = np.min(t)
     t_max = np.max(t)
 
-    t_fit = gloess_fit['phase'][gloess_select]
-    t_fit = t_fit*period + t0
+    ph_fit = gloess_fit['phase'][gloess_select]
+    t_fit = ph_fit*period + t0
     y_fit = gloess_fit['mag'][gloess_select]
 
 
     ph_min = np.mod((t_min - t0)/period, 1)
     ph_max = np.mod((t_max - t0)/period, 1)
+    ph = np.mod((t-t0)/period, 1)
     #print ph_min, ph_max
 
     fit_min = t_min - ph_min*period
@@ -414,13 +434,19 @@ def raw_lcv(lcv_data, period, t0, lcv_name, band='V'):
     N_cycles = int(N_to_min + N_to_max)
     x_fit_long = np.linspace(fit_min, fit_max, num=N_cycles*1000)
     y_fit_long = np.tile(y_fit, N_cycles)
+    ph_fit_long = np.mod((x_fit_long - t0)/period, 1)
+    x_local_mins = x_fit_long[ph_fit_long < 0.001]
+    ph_max = ph_fit[y_fit == y_fit.min()][0]
+
+    x_local_maxs = x_fit_long[(ph_fit_long > ph_max - 0.0005) & (ph_fit_long < ph_max+0.0005)]
+#    print 'Test:', N_cycles, len(x_local_mins), len(x_local_maxs)
 
     fig, ax = mp.subplots(2,1)
     mp.subplots_adjust(bottom=0.25)
 
 
     y = lcv_data['mag'][filt_select]
-    ax[0].plot(t,y,'o')
+    ax[0].scatter(t,y, s=3)
     ax[1].plot(t,y, 'o')
     ax[1].plot(x_fit_long, y_fit_long)
     v = [np.max(y), np.min(y)]
@@ -430,7 +456,7 @@ def raw_lcv(lcv_data, period, t0, lcv_name, band='V'):
     ax[1].set_ylabel('mag')
     ax[0].set_ylim(np.max(y)+0.2, np.min(y)-0.2)
     axcolor = 'lightgoldenrodyellow'
-    axpos = mp.axes([0.2, 0.1, 0.65, 0.03], axisbg=axcolor)
+    axpos = mp.axes([0.2, 0.1, 0.65, 0.03], facecolor=axcolor)
 
     spos = Slider(axpos, 'Pos', t_min-1, t_max-4)
 
@@ -446,13 +472,24 @@ def raw_lcv(lcv_data, period, t0, lcv_name, band='V'):
 
 
     # compute O-C diagram
-    indices = np.searchsorted(x_fit_long, t)
-    t_predicted = x_fit_long[indices]
-    y_predicted = y_fit_long[indices]
+    #y_predicted = np.interp(t, x_fit_long, y_fit_long)
+    #OC = y - y_predicted
 
-    OC = y - y_predicted
+    min_select = (ph < 0.01) | (ph > 0.99)
+    max_select = (ph > ph_max-0.01) & (ph < ph_max+0.01)
+
+    arg_mins = np.searchsorted(x_local_mins, t[min_select])
+    arg_maxs = np.searchsorted(x_local_maxs, t[max_select])
+    OC_min = t[min_select] - x_local_mins[arg_mins]
+    OC_max = t[max_select] - x_local_maxs[arg_maxs]
+
+
+
     fig = mp.figure()
-    mp.plot(t, OC, 'o')
+
+    mp.scatter(t[min_select], OC_min, alpha=0.3)
+    mp.scatter(t[max_select], OC_max, alpha=0.3)
     mp.xlabel('MJD')
     mp.ylabel('O-C')
+    mp.ylim(-0.5, 0.5)
     mp.show()
