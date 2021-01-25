@@ -10,6 +10,7 @@ import lcv_fitting as lcv
 filters, data = lcv.read_lcv('test_lcvs/NGC6121_V2.lcv')
 best_period = lcv.get_gatspy_period(data)
 ```
+![Period fit example](period-fit-example.png)
 
 ```python 
 import matplotlib.pyplot as plt 
@@ -29,4 +30,4 @@ ax.invert_yaxis()
 ax.set_xlabel('Phase')
 ax.set_ylabel('mag')
 ```
-
+![GLOESS fit example](gloess-fit-example.png)
