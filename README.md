@@ -23,7 +23,8 @@ filt = ['B', 'V']
 for i in range(2): 
     data_this_filter = data[data['filter'] == filt[i]]
     
-    t, tt, ttt = lcv.lcv_gloess(data_this_filter, best_period, make_plot=False, min_n_obs=12, max_delta_phase=0.2)
+    t, tt, ttt = lcv.lcv_gloess(data_this_filter, best_period, make_plot=False, 
+        min_n_obs=12, max_delta_phase=0.2)
     ax.plot(ttt['phase'], ttt['mag'], color='k')
     
 ax.invert_yaxis()
