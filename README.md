@@ -10,7 +10,7 @@ import lcv_fitting as lcv
 filters, data = lcv.read_lcv('test_lcvs/NGC6121_V2.lcv')
 best_period = lcv.get_gatspy_period(data)
 ```
-<img src="period-fit-example.png" width="100" height="100"/>
+<img src="period-fit-example.png" width="500" height="600"/>
 
 ```python 
 import matplotlib.pyplot as plt 
