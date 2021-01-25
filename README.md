@@ -1,6 +1,7 @@
 # Light-Curve-Fitting
 
-Routines to find the period of periodic variable stars, and to derive a smoothed light curve fit. 
+Routines to find the period of periodic variable stars, and to derive a smoothed light curve fit. See 
+test_lcvs directory for compatible format for input data. 
 
 ### Example
 
