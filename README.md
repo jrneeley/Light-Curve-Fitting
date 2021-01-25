@@ -4,10 +4,10 @@ Routines to find the period of periodic variable stars, and to derive a smoothed
 
 ## Functions: 
 
-```read_lcv ```
+```read_lcv```
 
-phase_lcv
+```phase_lcv```
 
-get_gatspy_period
+```get_gatspy_period```
 
-lcv_gloess 
+```lcv_gloess ```
