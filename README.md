@@ -30,4 +30,4 @@ ax.invert_yaxis()
 ax.set_xlabel('Phase')
 ax.set_ylabel('mag')
 ```
-<img src="gloess-fit-example.png" width="700"/>
+<img src="gloess-fit-example.png" width="400"/>
